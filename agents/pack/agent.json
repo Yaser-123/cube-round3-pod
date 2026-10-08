@@ -1,10 +1,11 @@
 {
   "stage": "pack",
-  "agent_id": "pack-stub@0",
-  "owner": "@github-handle-of-the-owner",
+  "agent_id": "pack-manager@1",
+  "owner": "@ThandraSwetha",
   "mode": "inproc",
   "url": "http://localhost:8103",
   "module": "agents.pack.app",
-  "implementation": "organiser-stub",
-  "notes": "Set mode to \"http\" if your agent is not Python or runs as its own service. Change implementation to a short honest description of what you built."
+  "implementation": "gemini-vision-pack-inspection",
+  "notes": "Uses Gemini vision to inspect open-box images, resolves expected order lines, produces contract Evidence Records using the Pack decision engine, and supports fail-open pending_review behavior."
 }
+
