@@ -101,6 +101,7 @@ def handle(request: dict) -> dict:
         image_bytes, mime_type = resolve_image(
             image_input["ref"],
             image_input["sha256"],
+            image_input.get("data_base64"),
         )
 
         started = time.perf_counter()

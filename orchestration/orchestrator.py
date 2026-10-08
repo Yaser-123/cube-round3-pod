@@ -13,6 +13,7 @@ What it does for you (keep or replace, but keep the behaviour; it is tested):
 """
 from __future__ import annotations
 
+import base64
 import hashlib
 import json
 import os
@@ -24,6 +25,7 @@ from shared.utils.log import get_logger
 from shared.utils.records import error_obj, pending_output, utcnow
 from shared.utils.schema import errors as schema_errors
 
+from agents.pack.input_resolver import MAX_IMAGE_BYTES
 from .clients import AgentRejected, AgentTimeout, AgentUnavailable, client_for, load_manifest
 from .rollup import derive_final_outcome, derive_status, effective
 from .store import MemoryStore
@@ -67,9 +69,24 @@ def discover_inputs(subject_id: str, stage: str) -> list[dict]:
     folder = root / subject_id / stage
     if not folder.is_dir():
         return []
-    return [{"ref": p.relative_to(root).as_posix(), "kind": KINDS.get(p.suffix.lower(), "other"),
-             "sha256": hashlib.sha256(p.read_bytes()).hexdigest()}
-            for p in sorted(folder.iterdir()) if p.is_file() and not p.name.startswith(".")]
+    inputs = []
+    for path in sorted(folder.iterdir()):
+        if not path.is_file() or path.name.startswith("."):
+            continue
+
+        ref = path.relative_to(root).as_posix()
+        kind = KINDS.get(path.suffix.lower(), "other")
+        if stage == "pack" and kind == "image" and path.stat().st_size > MAX_IMAGE_BYTES:
+            raise ValueError(f"Pack image exceeds the {MAX_IMAGE_BYTES}-byte limit: {ref}")
+
+        image = path.read_bytes()
+        item = {"ref": ref, "kind": kind, "sha256": hashlib.sha256(image).hexdigest()}
+        if stage == "pack" and kind == "image":
+            if len(image) > MAX_IMAGE_BYTES:
+                raise ValueError(f"Pack image exceeds the {MAX_IMAGE_BYTES}-byte limit: {ref}")
+            item["data_base64"] = base64.b64encode(image).decode("ascii")
+        inputs.append(item)
+    return inputs
 
 
 # ---------------------------------------------------------------- workflow state
@@ -158,12 +175,21 @@ def _run_stage(wf: dict, sr: dict, idx: int, opts: dict, store, client) -> dict 
         "schema_version": "1.0", "request_id": base if sr["runs"] == 1 else f"{base}:r{sr['runs']}",
         "workflow_id": wf["workflow_id"], "stage": stage,
         "subject": {"org_id": wf["org_id"], "subject_id": wf["subject_id"], "route": wf["context"].get("route", "unknown")},
-        "inputs": discover_inputs(wf["subject_id"], stage),
+        "inputs": [],
         "previous_evidence": _previous_evidence(wf, idx, store),
         "context": {"overrides": wf["overrides"], "case": wf["context"]},
     }
     t0, out, err = time.monotonic(), None, None
+    input_discovery_failed = False
+    try:
+        request["inputs"] = discover_inputs(wf["subject_id"], stage)
+    except ValueError as exc:
+        input_discovery_failed = True
+        err = error_obj("invalid_input", str(exc), retryable=False, stage=stage)
+
     while sr["attempts"] <= int(opts["retries"]):
+        if input_discovery_failed:
+            break
         sr["attempts"] += 1
         try:
             out = client.run(request, float(opts["timeout_s"]))

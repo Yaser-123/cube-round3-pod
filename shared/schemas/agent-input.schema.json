@@ -23,7 +23,8 @@
       "type": "array",
       "description": "This stage's captures / report rows, content-addressed.",
       "items": { "type": "object", "required": ["ref"], "properties": {
-        "ref": { "type": "string" }, "kind": { "enum": ["image", "video", "document", "csv_row", "other"] }, "sha256": { "type": ["string", "null"] } } }
+        "ref": { "type": "string" }, "kind": { "enum": ["image", "video", "document", "csv_row", "other"] }, "sha256": { "type": ["string", "null"] },
+        "data_base64": { "type": "string", "maxLength": 11184812, "description": "Optional inline base64 image data for Pack inputs; decoded image size is limited to 8 MiB." } } }
     },
     "previous_evidence": {
       "type": "array",

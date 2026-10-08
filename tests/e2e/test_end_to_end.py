@@ -1,5 +1,7 @@
 """End to end: whole workflows, from case to final outcome, persisted and reloaded."""
 import collections
+import base64
+import hashlib
 import json
 from pathlib import Path
 
@@ -84,6 +86,21 @@ def test_captures_in_data_input_become_content_addressed_inputs(tmp_path, monkey
     [item] = discover_inputs("UNIT-0001", "receiving")
     assert item["ref"] == "UNIT-0001/receiving/carton.jpg" and item["kind"] == "image" and len(item["sha256"]) == 64
     assert discover_inputs("UNIT-0001", "prep") == []
+
+
+def test_pack_capture_includes_base64_without_changing_content_address(tmp_path, monkeypatch):
+    monkeypatch.setenv("INPUT_DIR", str(tmp_path))
+    folder = tmp_path / "UNIT-0006" / "pack"
+    folder.mkdir(parents=True)
+    image = b"\x89PNG\r\n\x1a\n"
+    (folder / "open_box.png").write_bytes(image)
+
+    [item] = discover_inputs("UNIT-0006", "pack")
+
+    assert item["ref"] == "UNIT-0006/pack/open_box.png"
+    assert item["kind"] == "image"
+    assert item["sha256"] == hashlib.sha256(image).hexdigest()
+    assert item["data_base64"] == base64.b64encode(image).decode("ascii")
 
 
 def test_matches_expected_outcomes_for_the_organiser_stubs(cases):
